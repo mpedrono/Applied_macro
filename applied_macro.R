@@ -434,7 +434,7 @@ plots_region
 ggsave("plots_region.jpg", plots_region, units = "cm",
        height = 10, width = 25)
 
-#UE
+#UE analysis
 
 
 co2_fr_ue <- data.frame(list_ue,rep(0,length(list_ue)))
