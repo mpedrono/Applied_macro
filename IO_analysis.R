@@ -209,6 +209,7 @@ plot_type <- ggplot(data = co2_fr_type, aes(x="",y=conso_fr,fill=as.factor(type)
   labs(x="", y="", title = ~atop("Répartition des émissions de CO2 liées","à la consommation française"))+
   guides(fill = guide_legend(title = "Emissions"))+
   scale_fill_discrete(labels = c("Directes", "Importées","Domestiques"))+
+  scale_fill_manual(values = c("indianred1","indianred3","indianred4"))+
   theme_void()
 
 plot_type
@@ -231,6 +232,7 @@ plot_imp <- ggplot(data = co2_fr_imp, aes(x="",y=Emission,fill=as.factor(type)))
   labs(x="", y="", title = ~atop("Répartition des émissions indirectes de CO2","liées à la consommation française"))+
   guides(fill = guide_legend(title = "Emissions"))+
   scale_fill_discrete(labels = c("Domestiques", "Importées"))+
+  scale_fill_manual(values = c("indianred1","indianred4"))+
   theme_void()
 
 plot_imp
@@ -310,7 +312,6 @@ piechart_10_sec= ggplot(sec_10_rank[1:10,], aes(x="",y=e_tot,fill=IndustryDescri
   guides(fill = guide_legend(title = "Secteurs"))+
   theme_void()
 piechart_10_sec
-ggsave("piechart_10_sec.jpg", piechart_10_sec)
 
 #Pourcentage des émissions émises par le top 10 des secteurs
 top_10_sec = sum(sec_10_rank[1:10,"e_tot"])
@@ -341,7 +342,6 @@ plot_sec_agr <- ggplot(sec_agr_10_long, aes(x=reorder(IndustryDescriptionAgr,-em
   scale_fill_manual(values = c("indianred1", "indianred4"), labels=c('Domestique', 'Importation'))+
   theme(axis.text.x = element_text(angle=65, vjust=1, hjust=1))
 plot_sec_agr
-ggsave("plot_10_sec_agr.jpg",plot_sec_agr)
 
 sec_agr_rank <- co2_sec_agr[order(co2_sec_agr$e_tot, decreasing = T),] %>% select(IndustryAgr,e_dom,e_imp,e_tot)
 sec_agr_rank[21,c("e_dom","e_imp","e_tot")] <- sum(sec_agr_rank[6:20,c("e_dom","e_imp","e_tot")])
@@ -361,6 +361,7 @@ piechart_sec = ggplot(sec_agr_rank, aes(x="",y=e_tot, fill = IndustryDescription
         panel.grid  = element_blank())+
   labs(x="", y="", title = ~atop("Répartition des émissions indirectes de CO2","liées à la consommation française"))+
   guides(fill = guide_legend(title = "Secteurs"))+
+  scale_fill_brewer(palette = "Reds")+
   theme_void()
 piechart_sec
 ggsave("piechart_sec.jpg", piechart_sec)
@@ -411,7 +412,7 @@ co2_fr_country$region = ifelse(co2_fr_country$Country %in% list_ue, "UE",
 
 
 plot_region = ggplot(co2_fr_country, aes(x=region,y=e)) +
-  geom_bar(stat = "identity",fill="indianred1")+
+  geom_bar(stat = "identity",fill="indianred2")+
   labs(x="Région",y="Co2 (en kt)")+
   coord_flip()+
   theme_classic()
@@ -425,6 +426,7 @@ piechart_region = ggplot(co2_fr_region, aes(x="", y=e_imp, fill=region))+
   geom_text(aes(x=1.7,label = scales::percent(e_imp/sum(e_imp), accuracy = 0.1)),position = position_stack(vjust = 0.5))+
   labs(x="",y="")+
   guides(fill = guide_legend(title = "Région"))+
+  scale_fill_brewer(palette = "Reds")+
   theme_void()
 piechart_region
 ggsave("piechart_region.jpg", piechart_region)
@@ -434,7 +436,7 @@ plots_region
 ggsave("plots_region.jpg", plots_region, units = "cm",
        height = 10, width = 25)
 
-#UE analysis
+#UE
 
 
 co2_fr_ue <- data.frame(list_ue,rep(0,length(list_ue)))
@@ -455,12 +457,5 @@ deu_percent = co2_fr_ue[1,"e"]/sum(co2_fr_ue$e)
 esp_percent = co2_fr_ue[2,"e"]/sum(co2_fr_ue$e)
 bel_percent = co2_fr_ue[3,"e"]/sum(co2_fr_ue$e)
 
-plot_ue <- ggplot(co2_fr_ue, aes(x="",fill=Country,y=e)) + 
-  geom_col(color = "black")+ 
-  coord_polar(theta = "y")+
-  geom_text(data = subset(co2_fr_ue, e/sum(e)>0.08), aes(x=1.6, label = scales::percent(e/sum(e), accuracy=0.1)), position = position_stack(vjust = 0.5))+
-  labs(title="Contenu en CO2 de la consommation des ménages importé par pays", x="",y="")+
-  theme_void()
-plot_ue
 
 
