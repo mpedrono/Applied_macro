@@ -1,6 +1,6 @@
-setwd("C:/Users/maily/OneDrive/Documents/Cours 3A ENSAE/Applied Macro")
+setwd("C:/Users/maily/ENSAE/Applied_macro/Applied_macro")
 
-#code = https://gist.github.com/jasonrwang/fed65b0766b442ae4dee8ed3efddf6a9
+rm(list = ls())
 
 library(tidyr)
 library(dplyr)
@@ -9,16 +9,19 @@ library(readxl)
 library(reshape2)
 library(ggplot2) 
 
-###################
-# Import datasets #
-###################
+####################################
+# Importation des bases de données #
+####################################
 
+# WIOD
 load("WIOTS_in_R/WIOT2014_October16_ROW.RData")
 
 wiot = data.frame(wiot)
-# Re-index the row names in the same way as columns
+
+# Indexation des lignes avec le code pays et le numéro de secteur
 wiot <- wiot %>% mutate(Code = paste(Country, RNr, sep=""))
 
+# Compte environmental
 co2_sheets <- excel_sheets("CO2 emissions.xlsx")
 co2_sheets <- co2_sheets[co2_sheets != "Notes" & co2_sheets != "Sector" ]
 
@@ -26,21 +29,20 @@ co2_list <- lapply(setNames(co2_sheets, co2_sheets) , function(x)
   read_excel("CO2 emissions.xlsx", sheet = x)
 )
 
-###################################
-# Environmental satellite account #
-###################################
+#########################################
+# Manpiluation du compte environmenntal #
+#########################################
 
+# Sélection de des données de 2014 pour faire le lien avec la base WIOD
 co2_list <- lapply(co2_list, function(x)
   select(x,c(1,"2014"))
 )
 
+# On renomme certaines colonnes
 co2_list <- lapply(co2_list, function(x)
-  rename(x, "IndustryCode" = "...1")
+  rename(x, "IndustryCode" = "...1", "Emission" = "2014")
 )
 
-co2_list <- lapply(co2_list, function(x)
-  rename(x, "Emission" = "2014")
-)
 
 code_table <- wiot %>% filter(Country=="AUT") %>% select(RNr,IndustryCode)
 
@@ -48,80 +50,60 @@ co2_list <- lapply(co2_list, function(x)
   left_join(x, code_table, by = "IndustryCode")
 )
 
+# Création d'une base avec les données par pays empilées
 co2 <- bind_rows(co2_list, .id="Country")
 
-#Check nb pays et nb secteurs = NLD manquant
+# Séparation des émissions directes et indirectes
+
+co2_prod <- co2 %>% filter(IndustryCode != "FC_HH") #émissions indirects
+co2_conso <- co2 %>% filter(IndustryCode == "FC_HH") #émissions directes
+
+# Indexation des lignes avec le code pays et le numéro de secteur
+co2_prod <- co2_prod %>% mutate(Code = paste(Country, RNr, sep=""))
+
+###########################################
+# Definition des vecteurs et des matrices #
+###########################################
+
+# Nombre de pays
 list_country <- unique(wiot %>% filter(Country!="TOT") %>% select(Country))
-list_country_co2 <- unique(co2 %>% select(Country))
-list_country_co2$Country <- toupper(list_country_co2$Country)
-list_country$Country[!(list_country$Country %in% list_country_co2$Country)] 
-# il manque NLD dans les emissions CO2 => pq ?
+K <- length(list_country$Country)
 
+# Nombre de secteurs
 list_sec <- unique(wiot %>% filter(Country!="TOT") %>% select(IndustryCode,RNr,IndustryDescription))
-list_sec_co2 <- unique(co2 %>% select(IndustryCode))
-list_sec_co2$IndustryCode[!(list_sec_co2$IndustryCode %in% list_sec$IndustryCode)] 
-# FC_HH = Final consumption by HH => can be removed
+N <- length(list_sec$IndustryCode)
 
-co2_df <- co2 %>% filter(IndustryCode != "FC_HH")
-#co2_conso <- co2 %>% filter(IndustryCode == "FC_HH")
-
-# en attendant = creer un sous-tab vide pour NLD ? SOLUTION A TROUVER !!
-# Peut être mettre les facteurs d'emissions moyens / national account ?
-
-nld_creat <- cbind(rep("NLD",56), list_sec$IndustryCode,rep(0,56), list_sec$RNr)
-colnames(nld_creat) <- colnames(co2_df)
-co2_df <- rbind(co2_df, nld_creat)
-
-co2_df <- co2_df %>% mutate(Code = paste(Country, RNr, sep=""))
-
-# FAIRE ATTENTION = VERIFIER SI ORDRE EST BON ??
-
-###################
-# Define matrices #
-###################
-
-# Column 1-5 are row descriptions, the countries' data end at col 2469, and 2690 is the total output
-# Row 2470 is value added
-# Therefore, let's subset the data into our matrices.
-
-#nb countries
-K <- n_distinct(wiot %>% filter(Country!="TOT") %>% select(Country))  #remove TOT (not a country)
-
-#nb sectors 56
-N <- n_distinct(wiot %>% filter(Country!="TOT") %>% select(IndustryCode))
-
-unwanted_cols <- c("IndustryCode", "IndustryDescription", "Country", "RNr", "Year", "TOT")
-
-# Inter-industry matrix
+# Matrice des consommations intermédiaires
 Z_df  <- wiot %>% filter(Country!="TOT") %>% select(Code, 6:2469)
 Z <- as.matrix(Z_df %>% select(-Code))
 
-# Total Output
-x_df <- wiot %>% filter(Country!="TOT") %>% select(c(Code,TOT)) 
+# Vecteur de production totale
+x <- wiot %>% filter(Country!="TOT") %>% select(c(Code,TOT)) 
 
-# Order emission vector
-
-co2_df <- co2_df[order(match(co2_df$Code,x_df$Code)),]
-
-# Value-add
-#v_df <- wiot %>% filter(IndustryCode=="VA") %>% select(Code, 6:2469)
-
-# HH consumption
+# Consommation des ménages
 hh_colnames <- sapply(list_country, function(x) paste0(x,"57"))
 hh_df <-  wiot %>%  filter(Country!="TOT") %>% select(Code, Country, IndustryCode, FRA57)
 
 y <- as.matrix(hh_df$FRA57)
 
+# Vecteur de la demande domestique
 y_dom <- as.matrix(hh_df %>% mutate(FRA57 = ifelse(Country=="FRA",FRA57,0)) %>% select(FRA57))
 
+# Vecteur des importations
 y_imp <- as.matrix(hh_df %>% mutate(FRA57 = ifelse(Country!="FRA",FRA57,0)) %>% select(FRA57))
 
-# Emission by sector and country
+# Vecteur des émissions totales par pays et par secteur
+# Vecteur des émissions ordonné comme le vecteur de production
+co2_prod <- co2_prod[order(match(co2_prod$Code,x$Code)),]
 
-E <- t(as.matrix(co2_df %>% select (Emission)))
+E <- t(as.matrix(co2_prod %>% select (Emission)))
 E <- type.convert(E,dec=".",as.is=T)
 
-#Computation of the technical coefficients
+######################
+# Calculs matriciels #
+######################
+
+# Matrice des coefficients techniques (A)
 
 x_hat <- matrix(0, K*N, K*N)
 diag(x_hat) <- x$TOT
@@ -132,62 +114,60 @@ x_hat_inv[is.infinite(x_hat_inv)] <- 0 #remove infinite values
 
 A <- Z %*% x_hat_inv
 
-#Leontief matrix
+# Matrice de Leontief
 
 I <- matrix(0, K*N, K*N)
 diag(I) <- rep(1,K*N)
 L = solve(I-A)
 
-# Factors of emission
-
-y_hat <- matrix(0, K*N, K*N)
-diag(x_hat) <- x$TOT
+# Matrice des emissions par unité
 
 S <- E %*% x_hat_inv  
 
+# Matrice finale de passage entre demande finale et émissions
+
 M <- S %*% as.matrix(L) 
 
-#Repasser en df pour faciliter ?
+#########################################################
+# Emissions totales liées à la consommation des ménages #
+#########################################################
 
-#L = as.data.frame(L)
-#colnames(L) <- x$Code
+# Emissions indirectes
 
-E = as.data.frame(E)
-colnames(E) <- x$Code
+y_hat <- matrix(0, K*N, K*N)
+diag(y_hat) <- y
 
-###################
-# Total emissions #
-###################
-
-## Total CO2 emissions due to final demand by households
-
-y <- as.matrix(hh_df$FRA57)
-
-y_dom <- as.matrix(hh_df %>% mutate(FRA57 = ifelse(Country=="FRA",FRA57,0)) %>% select(FRA57))
-
-y_imp <- as.matrix(hh_df %>% mutate(FRA57 = ifelse(Country!="FRA",FRA57,0)) %>% select(FRA57))
-
-#Production
+co2_prod_mat <- M %*% y_hat
+co2_prod_mat
 
 co2_prod_fr <- M %*% y
 co2_prod_fr
 
-#Domestic production
+write.csv(t(co2_prod_mat), "conso_ménages_Maïlys.csv")
+
+# Emissions indirectes domestiques
 
 co2_dom_fr <- M %*% y_dom
 co2_dom_fr
 
-#Imported production
+# Emissions indirectes importées
 
 co2_imp_fr <- M %*% y_imp
 co2_imp_fr
 
-#HH final consumption
+# Emissions directes
 
 co2_conso_fr <- co2_conso %>% filter(Country == "FRA") %>% select(Emission)
 co2_conso_fr
 
-##Par secteur
+##############################
+# Décomposition par secteurs #
+##############################
+
+#plot_sector(list_sec,total=T)
+
+co2_sec <- data.frame(list_sec$IndustryCode,list_sec$IndustryDescription,rep(0,length(list_sec$IndustryCode)),rep(0,length(list_sec$IndustryCode)))
+colnames(co2_sec) <- c("IndustryCode", "IndustryDescription", "e_dom", "e_imp")
 
 co2_fr_sec <- data.frame(list_sec$IndustryCode,list_sec$IndustryDescription,rep(0,N),rep(0,N))
 colnames(co2_fr_sec) <- c("IndustryCode", "IndustryDescription", "e_dom", "e_imp")
@@ -219,7 +199,7 @@ plot_sec <- ggplot(co2_fr_sec_long, aes(x=IndustryCode,y=emission, fill=Origine)
 
 plot_sec
 
-# Top 10 domestic sectors
+# Top 10 sectors
 
 sec_10 <- co2_fr_sec[order(co2_fr_sec$e_tot, decreasing = T),] %>% slice(1:10) %>% select(IndustryCode,IndustryDescription,e_dom,e_imp)
 
@@ -250,7 +230,9 @@ plot_sec_agr <- ggplot(co2_sec_agr_long, aes(x=IndustryAgr,y=emission, fill=Orig
 plot_sec_agr
 
 
-## Par pays
+##########################
+# Décomposition par pays #
+##########################
 
 co2_fr_country <- data.frame(list_country$Country[list_country$Country!="FRA"],rep(0,K))
 colnames(co2_fr_country) <- c("Country", "e")
@@ -266,7 +248,7 @@ for (country in list_country$Country){
 co2_top_country <- co2_fr_country[order(co2_fr_country$e, decreasing=T),] %>% slice(1:10)
 
 plot_country <- ggplot(co2_fr_country, aes(x=Country,y=e)) + 
-  geom_bar(stat="identity", fill="lightblue")+ 
+  geom_bar(stat="identity", fill="indianred1")+ 
   labs(title="Contenu en CO2 de la consommation des ménages importé par pays", x="CO2 (en kt)", y = "Pays")
 plot_country
 
@@ -274,7 +256,6 @@ plot_top_country <- ggplot(co2_top_country, aes(x=Country,y=e)) + geom_bar(stat=
   labs(title="Contenu en CO2 de la consommation des ménages par pays", x="CO2 (en kt)", y = "Secteur")
 plot_top_country
 
-#resultats chelous NLD?
 
 #UE
 list_ue <- c("AUT", "BEL",	"BGR",	"HRV",	"CYP",	"CZE",	"DNK",	"EST",	
@@ -299,4 +280,48 @@ plot_ue <- ggplot(co2_fr_ue, aes(x=Country,y=e)) +
   labs(title="Contenu en CO2 de la consommation des ménages importé par pays", x="CO2 (en kt)", y = "Pays")
 plot_ue
 
+####################################################################
+# Emissions associées à une hausse de 1% de la demande des ménages #
+####################################################################
+
+#By sector
+
+co2_fr_sec_marg <- data.frame(list_sec$IndustryCode,list_sec$IndustryDescription,rep(0,N),rep(0,N))
+colnames(co2_fr_sec_marg) <- c("IndustryCode", "IndustryDescription", "e_dom", "e_imp")
+
+for (ind in list_sec$IndustryCode){
+  y_dom_sec_marg <- as.matrix(hh_df %>% mutate(FRA57 = ifelse(IndustryCode==ind,1,0)) %>%
+                                mutate(FRA57 = ifelse(Country=="FRA",FRA57,0)) %>% 
+                                select(FRA57))
+  
+  co2_fr_sec_marg$e_dom[co2_fr_sec$IndustryCode == ind] <- M %*% y_dom_sec_marg
+  
+  y_imp_sec_marg <- as.matrix(hh_df %>% mutate(FRA57 = ifelse(IndustryCode==ind,1,0)) %>%
+                                mutate(FRA57 = ifelse(Country!="FRA",FRA57,0)) %>% 
+                                select(FRA57))
+  
+  co2_fr_sec_marg$e_imp[co2_fr_sec$IndustryCode == ind] <- M %*% y_imp_sec_marg
+}
+
+co2_fr_sec_marg <- co2_fr_sec_marg %>%
+  mutate(e_tot = e_dom + e_imp)
+
+co2_fr_sec_long_marg <- co2_fr_sec_marg %>% select(IndustryCode, IndustryDescription, e_dom, e_imp) %>%
+  gather(Origine, emission, e_dom:e_imp, factor_key=TRUE)
+
+plot_sec_marg <- ggplot(co2_fr_sec_marg, aes(x=IndustryCode,y=e_tot)) + 
+  geom_bar(stat="identity", fill="indianred1") +
+  labs(title="Emissions de CO2 par secteur", x="CO2 (en kt)", y = "Secteur")
+
+plot_sec_marg
+
+# Top 10 sectors
+
+sec_10_marg <- co2_fr_sec_marg[order(co2_fr_sec_marg$e_tot, decreasing = T),] %>% slice(1:10) %>% select(IndustryCode,IndustryDescription,e_tot)
+
+plot_top_marg <- ggplot(sec_10_marg, aes(x=IndustryCode,y=e_tot)) + 
+  geom_bar(stat="identity", fill="indianred1") +
+  labs(title="Emissions de CO2 par secteur", x="CO2 (en kt)", y = "Secteur")
+
+plot_top_marg
 
