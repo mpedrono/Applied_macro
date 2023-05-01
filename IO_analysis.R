@@ -65,11 +65,11 @@ co2_prod <- co2_prod %>% mutate(Code = paste(Country, RNr, sep=""))
 # Definition des vecteurs et des matrices #
 ###########################################
 
-# Nombre de pays
+# Nombre de pays (44)
 list_country <- unique(wiot %>% filter(Country!="TOT") %>% select(Country))
 K <- length(list_country$Country)
 
-# Nombre de secteurs
+# Nombre de secteurs (56)
 list_sec <- unique(wiot %>% filter(Country!="TOT") %>% select(IndustryCode,RNr,IndustryDescription))
 N <- length(list_sec$IndustryCode)
 
@@ -134,16 +134,8 @@ M <- S %*% as.matrix(L)
 
 # Emissions indirectes
 
-y_hat <- matrix(0, K*N, K*N)
-diag(y_hat) <- y
-
-co2_prod_mat <- M %*% y_hat
-co2_prod_mat
-
 co2_prod_fr <- M %*% y
 co2_prod_fr
-
-write.csv(t(co2_prod_mat), "conso_ménages_Maïlys.csv")
 
 # Emissions indirectes domestiques
 
@@ -234,7 +226,7 @@ plot_sec_agr
 # Décomposition par pays #
 ##########################
 
-co2_fr_country <- data.frame(list_country$Country[list_country$Country!="FRA"],rep(0,K))
+co2_fr_country <- data.frame(list_country$Country[list_country$Country!="FRA"],rep(0,(K-1)))
 colnames(co2_fr_country) <- c("Country", "e")
 
 for (country in list_country$Country){
