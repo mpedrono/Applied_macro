@@ -5,7 +5,9 @@ library(dplyr)
 library(ioanalysis)
 library(readxl)
 library(reshape2)
-library(ggplot2) 
+library(ggplot2)
+library(knitr)
+library(kableExtra)
 
 ####################################
 # Importation des bases de données #
@@ -90,6 +92,15 @@ y_dom <- as.matrix(hh_df %>% mutate(FRA57 = ifelse(Country=="FRA",FRA57,0)) %>% 
 # Vecteur des importations
 y_imp <- as.matrix(hh_df %>% mutate(FRA57 = ifelse(Country!="FRA",FRA57,0)) %>% select(FRA57))
 
+# Autres types de consommation
+
+npo_colnames <- sapply(list_country, function(x) paste0(x,"58")) # Organisations a but non lucratif
+gov_colnames <- sapply(list_country, function(x) paste0(x,"59")) # Depenses publiques
+npo_df <-  wiot %>%  filter(Country!="TOT") %>% select(Code, Country, IndustryCode, FRA58)
+gov_df <-  wiot %>%  filter(Country!="TOT") %>% select(Code, Country, IndustryCode, FRA59)
+
+y_tot <- as.matrix(hh_df$FRA57) + as.matrix(npo_df$FRA58) + as.matrix(gov_df$FRA59)
+
 # Vecteur des émissions totales par pays et par secteur
 # Vecteur des émissions ordonné comme le vecteur de production
 co2_prod <- co2_prod[order(match(co2_prod$Code,x$Code)),]
@@ -145,6 +156,11 @@ co2_dom_fr
 co2_imp_fr <- M %*% y_imp
 co2_imp_fr
 
+# Part dans les emissions de production
+
+co2_tot_fr <- M %*% y_tot
+co2_prod_fr / co2_tot_fr
+
 # Emissions directes
 
 co2_conso_fr <- co2_conso %>% filter(Country == "FRA") %>% select(Emission)
@@ -179,6 +195,7 @@ ggsave("plot_type.jpg", plot = plot_type)
 ##############################
 # Décomposition par secteurs #
 ##############################
+table_sector = read_excel("CO2 Emissions.xlsx", sheet = "Sector")
 
 co2_fr_sec <- data.frame(list_sec$IndustryCode,list_sec$IndustryDescription,rep(0,N),rep(0,N))
 colnames(co2_fr_sec) <- c("IndustryCode", "IndustryDescription", "e_dom", "e_imp")
@@ -200,14 +217,15 @@ for (ind in list_sec$IndustryCode){
 co2_fr_sec <- co2_fr_sec %>%
   mutate(e_tot = e_dom + e_imp)
 
+co2_fr_sec %>% select(IndustryDescription, e_dom, e_imp, e_tot) %>% mutate(e_dom = round(e_dom),e_imp = round(e_imp), e_tot = round(e_tot)) %>%
+  kable("latex")
+
 # Top 10 des secteurs les plus emetteurs
 
 sec_10 <- co2_fr_sec[order(co2_fr_sec$e_tot, decreasing = T),] %>% slice(1:10) %>% select(IndustryCode,IndustryDescription,e_dom,e_imp)
 
 co2_sec_10_long <- sec_10 %>%
   gather(Origine, emission, e_dom:e_imp, factor_key=TRUE)
-
-table_sector = read_excel("CO2 Emissions.xlsx", sheet = "Sector")
 
 co2_sec_10_long$IndustryDescription_fr = table_sector$Description_fr_short[match(co2_sec_10_long$IndustryCode, table_sector$Code)]
 sec_10$IndustryDescription_fr = table_sector$Description_fr_short[match(sec_10$IndustryCode, table_sector$Code)]
@@ -325,9 +343,9 @@ ggsave("plots_region.jpg", plots_region, units = "cm",
        height = 10, width = 25)
 
 
-####################################################################
-# Emissions associées à une hausse de 1% de la demande des ménages #
-####################################################################
+#########################################################################
+# Emissions associées à une hausse de 1 unité de la demande des ménages #
+#########################################################################
 
 # Par secteur
 
@@ -354,65 +372,20 @@ co2_fr_sec_marg <- co2_fr_sec_marg %>%
 co2_fr_sec_long_marg <- co2_fr_sec_marg %>% select(IndustryCode, IndustryDescription, e_dom, e_imp) %>%
   gather(Origine, emission, e_dom:e_imp, factor_key=TRUE)
 
-plot_sec_marg <- ggplot(co2_fr_sec_marg, aes(x=IndustryCode,y=e_tot)) + 
-  geom_bar(stat="identity", fill="indianred1") +
-  labs(title="Emissions de CO2 par secteur", x="CO2 (en kt)", y = "Secteur")
-
-plot_sec_marg
 
 # Top 10 des secteurs les plus emetteurs
 
 sec_10_marg <- co2_fr_sec_marg[order(co2_fr_sec_marg$e_tot, decreasing = T),] %>% slice(1:10) %>% select(IndustryCode,IndustryDescription,e_tot)
+sec_10_marg$IndustryDescription_fr = table_sector$Description_fr[match(sec_10_marg$IndustryCode, table_sector$Code)]
 
-plot_top_marg <- ggplot(sec_10_marg, aes(x=IndustryCode,y=e_tot)) + 
+plot_top_marg <- ggplot(sec_10_marg, aes(x=factor(IndustryDescription_fr, levels = IndustryDescription_fr),y=e_tot)) + 
   geom_bar(stat="identity", fill="indianred1") +
-  labs(title="Emissions de CO2 par secteur", x="CO2 (en kt)", y = "Secteur")
+  labs(title=~atop("Contenu en CO2 de la consommation des ménages","pour les 10 secteurs les plus émetteurs"), y="CO2 (en kt)", x = "Secteur") +
+  theme(axis.text.x = element_text(angle=65, vjust=1, hjust=1))+
+  coord_flip()+
+  theme_classic()
 
 plot_top_marg
 
-
-####################################################################
-# Emissions associées à une hausse de 1% de la demande des ménages #
-####################################################################
-
-#By sector
-
-co2_fr_sec_marg <- data.frame(list_sec$IndustryCode,list_sec$IndustryDescription,rep(0,N),rep(0,N))
-colnames(co2_fr_sec_marg) <- c("IndustryCode", "IndustryDescription", "e_dom", "e_imp")
-
-for (ind in list_sec$IndustryCode){
-  y_dom_sec_marg <- as.matrix(hh_df %>% mutate(FRA57 = ifelse(IndustryCode==ind,1,0)) %>%
-                                mutate(FRA57 = ifelse(Country=="FRA",FRA57,0)) %>% 
-                                select(FRA57))
-  
-  co2_fr_sec_marg$e_dom[co2_fr_sec$IndustryCode == ind] <- M %*% y_dom_sec_marg
-  
-  y_imp_sec_marg <- as.matrix(hh_df %>% mutate(FRA57 = ifelse(IndustryCode==ind,1,0)) %>%
-                                mutate(FRA57 = ifelse(Country!="FRA",FRA57,0)) %>% 
-                                select(FRA57))
-  
-  co2_fr_sec_marg$e_imp[co2_fr_sec$IndustryCode == ind] <- M %*% y_imp_sec_marg
-}
-
-co2_fr_sec_marg <- co2_fr_sec_marg %>%
-  mutate(e_tot = e_dom + e_imp)
-
-co2_fr_sec_long_marg <- co2_fr_sec_marg %>% select(IndustryCode, IndustryDescription, e_dom, e_imp) %>%
-  gather(Origine, emission, e_dom:e_imp, factor_key=TRUE)
-
-plot_sec_marg <- ggplot(co2_fr_sec_marg, aes(x=IndustryCode,y=e_tot)) + 
-  geom_bar(stat="identity", fill="indianred1") +
-  labs(title="Emissions de CO2 par secteur", x="CO2 (en kt)", y = "Secteur")
-
-plot_sec_marg
-
-# Top 10 sectors
-
-sec_10_marg <- co2_fr_sec_marg[order(co2_fr_sec_marg$e_tot, decreasing = T),] %>% slice(1:10) %>% select(IndustryCode,IndustryDescription,e_tot)
-
-plot_top_marg <- ggplot(sec_10_marg, aes(x=IndustryCode,y=e_tot)) + 
-  geom_bar(stat="identity", fill="indianred1") +
-  labs(title="Emissions de CO2 par secteur", x="CO2 (en kt)", y = "Secteur")
-
-plot_top_marg
+ggsave("plot_top_marg.jpg",plot_top_sec)
 
