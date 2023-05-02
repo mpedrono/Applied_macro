@@ -8,6 +8,7 @@ library(reshape2)
 library(ggplot2)
 library(knitr)
 library(kableExtra)
+library(cowplot)
 
 ####################################
 # Importation des bases de données #
@@ -217,7 +218,9 @@ for (ind in list_sec$IndustryCode){
 co2_fr_sec <- co2_fr_sec %>%
   mutate(e_tot = e_dom + e_imp)
 
-co2_fr_sec %>% select(IndustryDescription, e_dom, e_imp, e_tot) %>% mutate(e_dom = round(e_dom),e_imp = round(e_imp), e_tot = round(e_tot)) %>%
+co2_fr_sec$IndustryDescription_fr = table_sector$Description_fr[match(co2_fr_sec$IndustryCode, table_sector$Code)]
+
+co2_fr_sec %>% select(IndustryDescription_fr, e_dom, e_imp, e_tot) %>% mutate(e_dom = round(e_dom),e_imp = round(e_imp), e_tot = round(e_tot), IndustryDescription_fr = tolower(IndustryDescription_fr)) %>%
   kable("latex")
 
 # Top 10 des secteurs les plus emetteurs
@@ -320,7 +323,7 @@ co2_fr_country$region = ifelse(co2_fr_country$Country %in% list_ue, "UE",
                                              ifelse(co2_fr_country$Country=="RUS", "Russie", 
                                                     ifelse(co2_fr_country$Country=="CHN","Chine",
                                                            ifelse(co2_fr_country$Country %in% list_asia_pacific, "Asie et Pacifique",
-                                                                  ifelse(co2_fr_country$Country %in% list_europe,"Europe","Reste du monde")))))))
+                                                                  ifelse(co2_fr_country$Country %in% list_europe,"Europe (autres)","Reste du monde")))))))
 
 
 # Graphique en niveau des emissions importees par region
@@ -339,7 +342,7 @@ co2_fr_region = co2_fr_country %>% group_by(region)%>% summarise(e_imp = sum(e))
 piechart_region = ggplot(co2_fr_region, aes(x="", y=e_imp, fill=region))+
   geom_col(color = "black")+
   coord_polar(theta = "y")+
-  geom_text(aes(x=1.7,label = scales::percent(e_imp/sum(e_imp), accuracy = 0.1)),position = position_stack(vjust = 0.5))+
+  geom_text(aes(x=1.7,label = scales::percent(e_imp/sum(e_imp), accuracy = 0.1)),position = position_stack(vjust = 0.3))+
   labs(x="",y="")+
   guides(fill = guide_legend(title = "Région"))+
   scale_fill_brewer(palette = "Reds")+
@@ -351,7 +354,7 @@ piechart_region
 plots_region = plot_grid(plot_region, piechart_region, nrow = 1, ncol = 2, labels = "Répartition des émissions de CO2 importées par région", vjust = 1,scale = c(0.8,1))
 plots_region
 ggsave("plots_region.jpg", plots_region, units = "cm",
-       height = 10, width = 25)
+       height = 12, width = 30)
 
 
 #########################################################################
