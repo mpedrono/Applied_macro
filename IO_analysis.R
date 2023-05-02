@@ -225,6 +225,17 @@ plot_top_sec <- ggplot(co2_sec_10_long%>%filter(Origine!="e_tot"), aes(x=factor(
 plot_top_sec
 ggsave("plot_top_sec.jpg",plot_top_sec)
 
+# Tableau des donnees sur les 10 secteurs les plus emetteurs
+sec_10_rank <- co2_fr_sec[order(co2_fr_sec$e_tot, decreasing = T),] %>% select(IndustryCode,IndustryDescription,e_dom,e_imp,e_tot)
+sec_10_rank[57,c("e_dom","e_imp","e_tot")] = sum(sec_10_rank[11:56,c("e_dom","e_imp","e_tot")])
+sec_10_rank = sec_10_rank[c(1:10,57),]
+sec_10_rank$IndustryDescription_fr = table_sector$Description_fr_short[match(sec_10_rank$IndustryCode, table_sector$Code)]
+sec_10_rank[11,c("IndustryCode","IndustryDescription","IndustryDescription_fr")] = c("Autres","Others","Autres")
+sec_10_rank$e_percent = sec_10_rank$e_tot/sum(sec_10_rank$e_tot)*100
+
+table_sec = sec_10_rank[,c("IndustryCode","IndustryDescription_fr","e_dom","e_imp","e_tot","e_percent")]
+kable(table_sec, digits=2, format = "latex")
+
 # Agregation des secteurs au niveau 1
 
 co2_sec_agr <- co2_fr_sec %>% mutate(IndustryAgr = substr(IndustryCode,1,1)) %>%
